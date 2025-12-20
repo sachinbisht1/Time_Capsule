@@ -1,0 +1,38 @@
+.map-container {
+  width: 100%;
+  height: calc(100vh - 80px);
+  position: relative;
+}
+
+.info-window {
+  background-color: white;
+  padding: 12px;
+  border-radius: 4px;
+  max-width: 250px;
+}
+
+.info-window h3 {
+  margin: 0 0 8px 0;
+  font-size: 14px;
+}
+
+.info-window p {
+  margin: 4px 0;
+  font-size: 12px;
+  color: #666;
+}
+
+.info-window button {
+  margin-top: 8px;
+  padding: 6px 12px;
+  background-color: #4285F4;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.info-window button:hover {
+  background-color: #2d6fd1;
+}

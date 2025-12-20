@@ -1,0 +1,26 @@
+.mode-toggle {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.toggle-btn {
+  padding: 8px 16px;
+  border: 2px solid #ddd;
+  background-color: white;
+  border-radius: 24px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  transition: all 0.3s;
+}
+
+.toggle-btn:hover {
+  border-color: #4285F4;
+}
+
+.toggle-btn.active {
+  background-color: #4285F4;
+  color: white;
+  border-color: #4285F4;
+}
