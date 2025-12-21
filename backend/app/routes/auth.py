@@ -3,11 +3,16 @@ from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identi
 from app import db
 from app.models import User
 from . import auth_bp
+import logging
+
+logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.DEBUG)
 
 
 @auth_bp.route('/register', methods=['POST'])
 def register():
     data = request.get_json()
+    logger.info(f"REGISTER REQUEST: {data}")
 
     if not data or not data.get('username') or not data.get('email') or not data.get('password'):
         return jsonify({'error': 'Missing required fields'}), 400
@@ -24,7 +29,8 @@ def register():
     db.session.add(user)
     db.session.commit()
 
-    access_token = create_access_token(identity=user.id)
+    access_token = create_access_token(identity=str(user.id))
+    logger.info(f"USER REGISTERED: ID={user.id}, token generated")
     return jsonify({
         'message': 'User registered successfully',
         'user': user.to_dict(),
@@ -35,6 +41,7 @@ def register():
 @auth_bp.route('/login', methods=['POST'])
 def login():
     data = request.get_json()
+    logger.info(f"LOGIN REQUEST: username={data.get('username')}")
 
     if not data or not data.get('username') or not data.get('password'):
         return jsonify({'error': 'Missing username or password'}), 400
@@ -42,9 +49,11 @@ def login():
     user = User.query.filter_by(username=data['username']).first()
 
     if not user or not user.check_password(data['password']):
+        logger.warning(f"LOGIN FAILED: Invalid credentials for {data.get('username')}")
         return jsonify({'error': 'Invalid username or password'}), 401
 
-    access_token = create_access_token(identity=user.id)
+    access_token = create_access_token(identity=str(user.id))
+    logger.info(f"LOGIN SUCCESS: user_id={user.id}, token generated")
     return jsonify({
         'message': 'Login successful',
         'user': user.to_dict(),

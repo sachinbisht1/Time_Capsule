@@ -13,6 +13,19 @@ export default function CapsuleForm({ userLocation, onCapsuleCreated }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
+  // Log location updates
+  useEffect(() => {
+    if (userLocation) {
+      console.log('📍 CapsuleForm received location:', {
+        lat: userLocation.lat,
+        lng: userLocation.lng,
+        accuracy: userLocation.accuracy,
+      });
+    } else {
+      console.log('⏳ CapsuleForm: location not yet available');
+    }
+  }, [userLocation]);
+
   const handleInputChange = (e) => {
     const { name, value } = e.target;
     setFormData((prev) => ({
@@ -31,9 +44,18 @@ export default function CapsuleForm({ userLocation, onCapsuleCreated }) {
     setError(null);
 
     try {
+      console.log('📝 CAPSULE FORM SUBMISSION:');
+      console.log('   userLocation:', userLocation);
+      console.log('   formData:', formData);
+      console.log('   file:', file);
+
       if (!userLocation) {
-        throw new Error('Location not available');
+        console.error('❌ Location not available!');
+        console.log('   userLocation is:', userLocation);
+        throw new Error('Location not available. Please allow location access and wait for the map to load.');
       }
+
+      console.log('✅ Location available:', userLocation);
 
       const form = new FormData();
       form.append('latitude', userLocation.lat);
@@ -44,11 +66,15 @@ export default function CapsuleForm({ userLocation, onCapsuleCreated }) {
 
       if (formData.media_type === 'image' && file) {
         form.append('file', file);
+        console.log('📸 Image file appended:', file.name);
       } else if (formData.media_type === 'text') {
         form.append('media_data', formData.media_data);
+        console.log('📝 Text content appended:', formData.media_data.length, 'chars');
       }
 
+      console.log('📤 Sending capsule creation request...');
       const response = await capsuleAPI.create(form);
+      console.log('✅ Capsule created successfully:', response.data.capsule);
       onCapsuleCreated?.(response.data.capsule);
 
       // Reset form
@@ -60,7 +86,9 @@ export default function CapsuleForm({ userLocation, onCapsuleCreated }) {
       });
       setFile(null);
     } catch (err) {
-      setError(err.response?.data?.error || err.message);
+      const errorMsg = err.response?.data?.error || err.message;
+      console.error('❌ Error creating capsule:', errorMsg);
+      setError(errorMsg);
     } finally {
       setLoading(false);
     }
@@ -141,15 +169,32 @@ export default function CapsuleForm({ userLocation, onCapsuleCreated }) {
         )}
 
         <div className="location-info">
-          {userLocation && (
-            <p>
-              Location: {userLocation.lat.toFixed(4)}, {userLocation.lng.toFixed(4)}
+          {userLocation ? (
+            <>
+              <p style={{fontWeight: 'bold', color: '#27ae60'}}>
+                ✅ Your Current Location
+              </p>
+              <p style={{fontSize: '1em', margin: '5px 0'}}>
+                {userLocation.lat.toFixed(4)}, {userLocation.lng.toFixed(4)}
+              </p>
+              <p style={{fontSize: '0.9em', color: '#666', margin: '5px 0'}}>
+                Accuracy: ±{userLocation.accuracy ? userLocation.accuracy.toFixed(2) : '?'} meters
+              </p>
+              {userLocation.isFallback && (
+                <p style={{fontSize: '0.85em', color: '#e67e22', fontStyle: 'italic'}}>
+                  ⚠️ Using fallback location (GPS unavailable)
+                </p>
+              )}
+            </>
+          ) : (
+            <p style={{color: '#ff6b6b', fontWeight: 'bold'}}>
+              ⏳ Acquiring location... Please wait
             </p>
           )}
         </div>
 
-        <button type="submit" disabled={loading}>
-          {loading ? 'Creating Capsule...' : 'Create Capsule'}
+        <button type="submit" disabled={loading || !userLocation}>
+          {loading ? 'Creating Capsule...' : !userLocation ? 'Waiting for Location...' : 'Create Capsule'}
         </button>
       </form>
     </div>

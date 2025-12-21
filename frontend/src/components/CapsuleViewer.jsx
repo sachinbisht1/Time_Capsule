@@ -2,10 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { capsuleAPI } from '../utils/api';
 import './CapsuleViewer.css';
 
-export default function CapsuleViewer({ capsule, userLocation, onClose }) {
+export default function CapsuleViewer({ capsule, userLocation, onClose, currentUserId }) {
   const [capsuleContent, setCapsuleContent] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     viewCapsule();
@@ -31,6 +32,28 @@ export default function CapsuleViewer({ capsule, userLocation, onClose }) {
     }
   };
 
+  const handleDeleteCapsule = async () => {
+    if (!window.confirm('Are you sure you want to delete this memory? This cannot be undone.')) {
+      return;
+    }
+
+    setDeleting(true);
+    try {
+      await capsuleAPI.deleteCapsule(capsule.id);
+      console.log('✅ Capsule deleted successfully');
+      onClose(); // Close the viewer and refresh list
+    } catch (err) {
+      const errorMsg = err.response?.data?.error || err.message;
+      console.error('❌ Error deleting capsule:', errorMsg);
+      alert('Error deleting capsule: ' + errorMsg);
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  // Check if current user is the creator
+  const isCreator = currentUserId && capsuleContent && String(capsuleContent.owner_id) === String(currentUserId);
+
   if (loading) {
     return (
       <div className="capsule-viewer">
@@ -54,8 +77,23 @@ export default function CapsuleViewer({ capsule, userLocation, onClose }) {
   return (
     <div className="capsule-viewer">
       <div className="viewer-header">
-        <h2>{capsuleContent.title}</h2>
-        <button className="close-btn" onClick={onClose}>×</button>
+        <div className="title-with-icon">
+          <span className="time-capsule-icon">⏰</span>
+          <h2>{capsuleContent.title}</h2>
+        </div>
+        <div className="header-actions">
+          {isCreator && (
+            <button
+              className="delete-btn"
+              onClick={handleDeleteCapsule}
+              disabled={deleting}
+              title="Delete this memory"
+            >
+              {deleting ? '🗑️ Deleting...' : '🗑️ Delete'}
+            </button>
+          )}
+          <button className="close-btn" onClick={onClose}>×</button>
+        </div>
       </div>
 
       <div className="viewer-content">

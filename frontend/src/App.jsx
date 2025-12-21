@@ -18,16 +18,137 @@ function App() {
   // Get user location
   useEffect(() => {
     if (navigator.geolocation) {
-      navigator.geolocation.watchPosition(
-        (position) => {
-          setUserLocation({
-            lat: position.coords.latitude,
-            lng: position.coords.longitude,
+      console.log('🌍 Geolocation API detected. Checking permissions...');
+      
+      let watchId = null;
+      let retryCount = 0;
+      const maxRetries = 10;
+      
+      // First, check if we have permission using the Permissions API
+      if (navigator.permissions && navigator.permissions.query) {
+        navigator.permissions.query({ name: 'geolocation' })
+          .then((permission) => {
+            console.log(`📍 Permission status: ${permission.state}`);
+            // state can be: 'granted', 'denied', 'prompt'
+            
+            if (permission.state === 'denied') {
+              console.error('❌ Location permission was DENIED. Please enable it in browser settings.');
+              return;
+            }
+          })
+          .catch((err) => {
+            console.error('⚠️  Could not check permission status:', err);
+            // Continue anyway, the request might still work
           });
-        },
-        (error) => console.error('Geolocation error:', error),
-        { enableHighAccuracy: true, maximumAge: 0 }
-      );
+      }
+      
+      const tryGetPosition = () => {
+        console.log(`📍 Attempting to get position (attempt ${retryCount + 1}/${maxRetries})...`);
+        
+        // Try with low accuracy first (faster), then fall back to high accuracy
+        const options = retryCount < 3 
+          ? { enableHighAccuracy: false, timeout: 3000, maximumAge: 0 }
+          : { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 };
+        
+        navigator.geolocation.getCurrentPosition(
+          (position) => {
+            const lat = position.coords.latitude;
+            const lng = position.coords.longitude;
+            const accuracy = position.coords.accuracy;
+            
+            console.log('✅ GEOLOCATION ACQUIRED!');
+            console.log(`   Latitude: ${lat}`);
+            console.log(`   Longitude: ${lng}`);
+            console.log(`   Accuracy: ±${accuracy.toFixed(2)} meters`);
+            console.log(`   Timestamp: ${new Date(position.timestamp).toLocaleTimeString()}`);
+            
+            setUserLocation({
+              lat: lat,
+              lng: lng,
+              accuracy: accuracy,
+            });
+            
+            // After first successful position, use watchPosition for continuous updates
+            watchId = navigator.geolocation.watchPosition(
+              (pos) => {
+                const newLat = pos.coords.latitude;
+                const newLng = pos.coords.longitude;
+                const newAccuracy = pos.coords.accuracy;
+                
+                console.log('📍 GEOLOCATION UPDATE (continuous):');
+                console.log(`   Latitude: ${newLat}`);
+                console.log(`   Longitude: ${newLng}`);
+                console.log(`   Accuracy: ±${newAccuracy.toFixed(2)} meters`);
+                
+                setUserLocation({
+                  lat: newLat,
+                  lng: newLng,
+                  accuracy: newAccuracy,
+                });
+              },
+              (err) => {
+                console.error('⚠️  Watch position error:', err.code, err.message);
+              },
+              { enableHighAccuracy: true, maximumAge: 5000, timeout: 5000 }
+            );
+          },
+          (error) => {
+            const errorCodes = {
+              1: 'PERMISSION_DENIED - User denied location permission',
+              2: 'POSITION_UNAVAILABLE - Device location services are off or unavailable',
+              3: 'TIMEOUT - Taking too long to get position'
+            };
+            const errorName = errorCodes[error.code] || 'UNKNOWN';
+            console.error(`❌ Position error:`);
+            console.error(`   Code: ${error.code}`);
+            console.error(`   Message: ${errorName}`);
+            console.error(`   Details: ${error.message}`);
+            
+            if (error.code === 1) {
+              // PERMISSION_DENIED
+              console.error('⚠️  PERMISSION ISSUE:');
+              console.error('   This usually means:');
+              console.error('   1. You clicked "Block" instead of "Allow"');
+              console.error('   2. Browser location is disabled in settings');
+              console.error('   3. Your device location services are OFF');
+              console.error('   FIX: Check browser settings → Privacy → Location or device location settings');
+            } else if (error.code === 2) {
+              // POSITION_UNAVAILABLE
+              console.error('⚠️  LOCATION SERVICES ISSUE:');
+              console.error('   Your device location services might be OFF');
+              console.error('   FIX: Enable GPS/location services on your device');
+            } else if (error.code === 3) {
+              // TIMEOUT
+              if (retryCount < maxRetries) {
+                retryCount++;
+                const delay = retryCount < 5 ? 500 : 1000;
+                console.log(`⏳ Retrying in ${delay}ms... (${retryCount}/${maxRetries})`);
+                setTimeout(tryGetPosition, delay);
+              } else {
+                console.error('❌ Max retries reached. Location still unavailable.');
+              }
+            }
+          },
+          options
+        );
+      };
+      
+      // Start trying to get position immediately (don't wait)
+      tryGetPosition();
+      
+      // Don't use a hard fallback timeout - keep retrying instead
+      // This ensures we get real GPS data instead of fallback
+      // If GPS fails permanently, user will see an error message
+      
+      // Cleanup
+      return () => {
+        if (watchId) {
+          console.log('🧹 Cleaning up geolocation watch');
+          navigator.geolocation.clearWatch(watchId);
+        }
+      };
+    } else {
+      console.error('❌ Geolocation not supported by this browser');
     }
   }, []);
 
@@ -37,7 +158,7 @@ function App() {
     if (token) {
       checkAuth();
     }
-  }, []);
+  }, []); // eslint-disable-next-line react-hooks/exhaustive-deps
 
   const checkAuth = async () => {
     try {
@@ -191,6 +312,7 @@ function App() {
           <CapsuleViewer
             capsule={selectedCapsule}
             userLocation={userLocation}
+            currentUserId={user?.id}
             onClose={() => setSelectedCapsule(null)}
           />
         )}

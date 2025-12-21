@@ -136,7 +136,7 @@ def get_nearby_capsules():
 @capsule_bp.route('/<int:capsule_id>/view', methods=['POST'])
 @jwt_required()
 def view_capsule(capsule_id):
-    """View capsule content if user is within 2 meters"""
+    """View capsule content if user is within 50 meters"""
     user_id = get_jwt_identity()
     data = request.get_json()
     
@@ -151,11 +151,11 @@ def view_capsule(capsule_id):
         if not capsule:
             return jsonify({'error': 'Capsule not found'}), 404
         
-        # Check distance (within 2 meters)
+        # Check distance (within 50 meters)
         distance = capsule.calculate_distance(user_lat, user_lon)
-        if distance > 2:
+        if distance > 50:
             return jsonify({
-                'error': f'You must be within 2 meters of the capsule. Current distance: {round(distance, 2)}m'
+                'error': f'You must be within 50 meters of the capsule. Current distance: {round(distance, 2)}m'
             }), 403
         
         # Record visit
@@ -230,3 +230,49 @@ def get_capsule_stats(capsule_id):
         'total_unique_visitors': len(set(v.visitor_id for v in visits)),
         'visits': [v.to_dict() for v in visits]
     }), 200
+
+
+@capsule_bp.route('/<int:capsule_id>', methods=['DELETE'])
+@jwt_required()
+def delete_capsule(capsule_id):
+    """Delete a capsule (only creator can delete)"""
+    user_id = int(get_jwt_identity())
+    print(f"DEBUG: Delete capsule request - capsule_id={capsule_id}, user_id={user_id}")
+    
+    try:
+        capsule = Capsule.query.get(capsule_id)
+        if not capsule:
+            print(f"DEBUG: Capsule {capsule_id} not found")
+            return jsonify({'error': 'Capsule not found'}), 404
+        
+        # Check ownership (CRITICAL: string comparison)
+        if str(capsule.owner_id) != str(user_id):
+            print(f"DEBUG: User {user_id} tried to delete capsule owned by {capsule.owner_id}")
+            return jsonify({'error': 'Cannot delete capsules created by other users'}), 403
+        
+        # Delete image file if exists
+        if capsule.media_url:
+            try:
+                filename = capsule.media_url.split('/')[-1]
+                filepath = os.path.join(current_app.config['UPLOAD_FOLDER'], filename)
+                if os.path.exists(filepath):
+                    os.remove(filepath)
+                    print(f"DEBUG: Deleted image file: {filename}")
+            except Exception as e:
+                print(f"DEBUG: Error deleting image file: {str(e)}")
+        
+        # Delete all visits for this capsule
+        Visit.query.filter_by(capsule_id=capsule_id).delete()
+        print(f"DEBUG: Deleted all visits for capsule {capsule_id}")
+        
+        # Delete capsule itself
+        db.session.delete(capsule)
+        db.session.commit()
+        
+        print(f"DEBUG: Capsule {capsule_id} deleted successfully by user {user_id}")
+        return jsonify({'message': 'Capsule deleted successfully'}), 200
+        
+    except Exception as e:
+        print(f"DEBUG: Exception in delete_capsule - {e}")
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500

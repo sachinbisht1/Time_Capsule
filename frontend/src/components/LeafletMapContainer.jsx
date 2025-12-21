@@ -47,8 +47,15 @@ function MapTypeToggle({ onGoToLocation, userLocation }) {
   }, [mapType, map]);
 
   const handleGoToLocation = () => {
-    if (userLocation) {
+    console.log('📍 Location button clicked');
+    console.log('   userLocation:', userLocation);
+    
+    if (userLocation && typeof userLocation.lat === 'number' && typeof userLocation.lng === 'number') {
+      console.log(`✅ Moving map to: ${userLocation.lat}, ${userLocation.lng}`);
       map.setView([userLocation.lat, userLocation.lng], 15);
+    } else {
+      console.error('❌ Invalid location data:', userLocation);
+      alert('Location not available yet. Please allow location access and wait a moment.');
     }
   };
 
@@ -120,6 +127,11 @@ function MapContent({ userLocation, userMode, capsules, myCapsules, onCapsuleSel
   // Center map on user location
   useEffect(() => {
     if (userLocation) {
+      console.log('🎯 USER LOCATION DETECTED:');
+      console.log(`   Latitude: ${userLocation.lat}`);
+      console.log(`   Longitude: ${userLocation.lng}`);
+      console.log(`   Accuracy: ${userLocation.accuracy || 'unknown'} meters`);
+      console.log(`   Full location object:`, userLocation);
       map.setView([userLocation.lat, userLocation.lng], 15);
     }
   }, [userLocation, map]);
@@ -161,8 +173,8 @@ function MapContent({ userLocation, userMode, capsules, myCapsules, onCapsuleSel
 
   return (
     <>
-      {/* User location marker */}
-      {userLocation && userMode === 'visitor' && (
+      {/* User location marker - Show in BOTH modes */}
+      {userLocation && (
         <Marker
           position={[userLocation.lat, userLocation.lng]}
           icon={L.icon({
@@ -175,7 +187,7 @@ function MapContent({ userLocation, userMode, capsules, myCapsules, onCapsuleSel
             popupAnchor: [1, -34],
             shadowSize: [41, 41],
           })}
-          title="Your Location"
+          title="Your Current Location"
         >
           <Popup>
             📍 <strong>Your Location</strong>

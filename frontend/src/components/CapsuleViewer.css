@@ -20,10 +20,50 @@
   border-bottom: 1px solid #eee;
 }
 
+.title-with-icon {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+}
+
+.time-capsule-icon {
+  font-size: 24px;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .viewer-header h2 {
   margin: 0;
   color: #333;
   font-size: 20px;
+}
+
+.delete-btn {
+  padding: 8px 12px;
+  background-color: #ff4444;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.delete-btn:hover:not(:disabled) {
+  background-color: #cc0000;
+  transform: scale(1.05);
+}
+
+.delete-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .close-btn {
