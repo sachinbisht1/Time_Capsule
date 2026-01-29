@@ -5,6 +5,9 @@ from flask_jwt_extended import JWTManager
 import os
 from dotenv import load_dotenv
 import logging
+from datetime import timedelta, datetime
+import threading
+import time
 
 load_dotenv()
 
@@ -27,8 +30,16 @@ def create_app():
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
     app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'dev-secret-key')
     app.config['JWT_SECRET_KEY'] = os.getenv('JWT_SECRET_KEY', 'jwt-secret-key')
+    # JWT token expiration strategy
+    # Access tokens are short-lived; refresh tokens are long-lived and used to obtain new access tokens.
+    app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(hours=int(os.getenv('JWT_ACCESS_EXPIRES_HOURS', 6)))
+    app.config['JWT_REFRESH_TOKEN_EXPIRES'] = timedelta(days=int(os.getenv('JWT_REFRESH_EXPIRES_DAYS', 30)))
     app.config['UPLOAD_FOLDER'] = os.getenv('UPLOAD_FOLDER', 'uploads')
     app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
+    # Data retention: delete capsules older than this (days)
+    app.config['DATA_RETENTION_DAYS'] = int(os.getenv('DATA_RETENTION_DAYS', 1))
+    # How often (in seconds) the cleanup task runs
+    app.config['CLEANUP_INTERVAL_SECONDS'] = int(os.getenv('CLEANUP_INTERVAL_SECONDS', 3600))
     
     # Initialize extensions
     db.init_app(app)
@@ -90,6 +101,42 @@ def create_app():
     # Create tables
     with app.app_context():
         db.create_all()
+
+    def _cleanup_worker(app):
+        """Background worker that deletes capsules older than the retention period."""
+        # Import models inside worker to avoid circular imports at module import time
+        from app.models import Capsule, Visit
+
+        while True:
+            try:
+                with app.app_context():
+                    retention_days = app.config.get('DATA_RETENTION_DAYS', 1)
+                    cutoff = datetime.utcnow() - timedelta(days=retention_days)
+
+                    # Find IDs of capsules to remove
+                    old_capsules = Capsule.query.filter(Capsule.created_at < cutoff).all()
+                    if old_capsules:
+                        ids = [c.id for c in old_capsules]
+                        # Delete associated visits first (bulk delete)
+                        Visit.query.filter(Visit.capsule_id.in_(ids)).delete(synchronize_session=False)
+                        # Delete capsules
+                        Capsule.query.filter(Capsule.id.in_(ids)).delete(synchronize_session=False)
+                        db.session.commit()
+                        logger.info(f"🧹 CLEANUP: Deleted {len(ids)} capsules older than {retention_days} days")
+            except Exception as e:
+                logger.error(f"Cleanup worker error: {e}")
+                try:
+                    db.session.rollback()
+                except Exception:
+                    pass
+
+            # Sleep until next run
+            interval = app.config.get('CLEANUP_INTERVAL_SECONDS', 3600)
+            time.sleep(interval)
+
+    # Start cleanup background thread
+    cleanup_thread = threading.Thread(target=_cleanup_worker, args=(app,), daemon=True)
+    cleanup_thread.start()
     
     # Error handlers
     @app.errorhandler(422)

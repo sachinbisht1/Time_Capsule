@@ -263,3 +263,6 @@ npm start
 Everything is set up and ready to run. Follow the **SETUP_GUIDE.md** for step-by-step installation, then start creating and discovering memories!
 
 **Questions?** Check the README files in backend/ and frontend/ folders.
+![alt text](image.png)
+frontend--->PS C:\Users\ksach\Desktop\BUDGET_template\TimeCapsule\frontend> npm start
+backend-->(venv) PS C:\Users\ksach\Desktop\BUDGET_template\TimeCapsule\backend> python run.py

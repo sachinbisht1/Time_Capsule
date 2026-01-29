@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
+export const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
 
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -62,13 +62,52 @@ api.interceptors.response.use(
   },
   (error) => {
     console.error('❌ API ERROR:', error.response?.status, error.config.url);
-    if (error.response?.status === 401) {
-      console.error('   Unauthorized (401) - JWT token may be expired or invalid');
-      console.error('   Response:', error.response?.data);
-    } else if (error.response?.status === 422) {
+
+    const originalRequest = error.config;
+
+    // If we get a 401, try to refresh the access token using the refresh token.
+    if (error.response?.status === 401 && !originalRequest._retry) {
+      originalRequest._retry = true;
+      const refreshToken = localStorage.getItem('refresh_token');
+
+      if (!refreshToken) {
+        console.warn('No refresh token available; redirecting to login.');
+        localStorage.removeItem('access_token');
+        localStorage.removeItem('refresh_token');
+        return Promise.reject(error);
+      }
+
+      // Call /auth/refresh with the refresh token in Authorization header.
+      return axios.post(`${API_BASE_URL}/auth/refresh`, null, {
+        headers: { Authorization: `Bearer ${refreshToken}` },
+      })
+        .then((res) => {
+          if (res.status === 200 && res.data?.access_token) {
+            console.log('🔁 Access token refreshed');
+            localStorage.setItem('access_token', res.data.access_token);
+            // Update the original request Authorization header and retry
+            originalRequest.headers.Authorization = `Bearer ${res.data.access_token}`;
+            return axios(originalRequest);
+          }
+
+          // If refresh didn't return a token, clear storage and fail
+          localStorage.removeItem('access_token');
+          localStorage.removeItem('refresh_token');
+          return Promise.reject(error);
+        })
+        .catch((refreshError) => {
+          console.warn('Refresh token invalid or expired; clearing tokens.');
+          localStorage.removeItem('access_token');
+          localStorage.removeItem('refresh_token');
+          return Promise.reject(refreshError);
+        });
+    }
+
+    if (error.response?.status === 422) {
       console.error('   Unprocessable Entity (422) - Invalid data or missing fields');
       console.error('   Response:', error.response?.data);
     }
+
     return Promise.reject(error);
   }
 );

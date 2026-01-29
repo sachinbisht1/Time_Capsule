@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { capsuleAPI } from '../utils/api';
+import api, { capsuleAPI, API_BASE_URL } from '../utils/api';
 import './CapsuleViewer.css';
 
 export default function CapsuleViewer({ capsule, userLocation, onClose, currentUserId }) {
@@ -102,11 +102,7 @@ export default function CapsuleViewer({ capsule, userLocation, onClose, currentU
         )}
 
         {capsuleContent.media_type === 'image' && capsuleContent.media_url && (
-          <img
-            src={capsuleContent.media_url}
-            alt={capsuleContent.title}
-            className="capsule-image"
-          />
+          <ImageFromProtectedUrl url={capsuleContent.media_url} alt={capsuleContent.title} className="capsule-image" />
         )}
 
         {capsuleContent.media_type === 'text' && capsuleContent.media_data && (
@@ -124,4 +120,34 @@ export default function CapsuleViewer({ capsule, userLocation, onClose, currentU
       <button className="close-btn-bottom" onClick={onClose}>Close Memory</button>
     </div>
   );
+}
+
+
+function ImageFromProtectedUrl({ url, alt, className }) {
+  const [src, setSrc] = React.useState(null);
+
+  useEffect(() => {
+    let mounted = true;
+    const fetchImage = async () => {
+      try {
+        // url is like '/api/capsules/1/image' — build absolute URL to backend
+        const base = API_BASE_URL.replace(/\/api\/?$/, '');
+        const fullUrl = `${base}${url}`;
+        const res = await api.get(fullUrl, { responseType: 'blob' });
+        const blob = res.data;
+        const objectUrl = URL.createObjectURL(blob);
+        if (mounted) setSrc(objectUrl);
+      } catch (e) {
+        console.error('Error loading image', e);
+      }
+    };
+    fetchImage();
+    return () => {
+      mounted = false;
+      if (src) URL.revokeObjectURL(src);
+    };
+  }, [url]);
+
+  if (!src) return <div className="image-loading">Loading image...</div>;
+  return <img src={src} alt={alt} className={className} />;
 }

@@ -13,7 +13,7 @@ class Capsule(db.Model):
     description = db.Column(db.Text)
     media_type = db.Column(db.String(20))  # 'image' or 'text'
     media_url = db.Column(db.String(500))  # Path to image or base64 text
-    media_data = db.Column(db.Text)  # For storing text content directly
+    media_data = db.Column(db.Text)  # For storing text content directly or JSON with image bytes (base64)
     is_open = db.Column(db.Boolean, default=False)
     open_count = db.Column(db.Integer, default=0)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
@@ -39,7 +39,9 @@ class Capsule(db.Model):
         
         if include_content:
             if self.media_type == 'image':
-                data['media_url'] = self.media_url
+                # For images we store the binary (base64) inside media_data as JSON.
+                # Expose a URL that the frontend can call to fetch the raw image bytes.
+                data['media_url'] = f'/api/capsules/{self.id}/image'
             elif self.media_type == 'text':
                 data['media_data'] = self.media_data
         

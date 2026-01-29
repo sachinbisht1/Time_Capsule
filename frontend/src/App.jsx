@@ -174,6 +174,9 @@ function App() {
     try {
       const response = await authAPI.login(formData.username, formData.password);
       localStorage.setItem('access_token', response.data.access_token);
+      if (response.data.refresh_token) {
+        localStorage.setItem('refresh_token', response.data.refresh_token);
+      }
       setUser(response.data.user);
       setFormData({ username: '', email: '', password: '' });
     } catch (error) {
@@ -190,6 +193,9 @@ function App() {
         formData.password
       );
       localStorage.setItem('access_token', response.data.access_token);
+      if (response.data.refresh_token) {
+        localStorage.setItem('refresh_token', response.data.refresh_token);
+      }
       setUser(response.data.user);
       setFormData({ username: '', email: '', password: '' });
     } catch (error) {
@@ -199,6 +205,7 @@ function App() {
 
   const handleLogout = () => {
     localStorage.removeItem('access_token');
+    localStorage.removeItem('refresh_token');
     setUser(null);
     setFormData({ username: '', email: '', password: '' });
   };

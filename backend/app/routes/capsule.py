@@ -7,6 +7,10 @@ from . import capsule_bp
 import os
 from datetime import datetime
 import traceback
+import io
+import base64
+import json
+from PIL import Image
 
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
 
@@ -44,20 +48,60 @@ def create_capsule():
         )
         
         if media_type == 'image':
-            if 'file' not in request.files:
-                return jsonify({'error': 'No image provided'}), 400
-            
-            file = request.files['file']
-            if file.filename == '':
-                return jsonify({'error': 'No file selected'}), 400
-            
-            if not allowed_file(file.filename):
-                return jsonify({'error': 'Invalid file type'}), 400
-            
-            filename = secure_filename(f"{datetime.utcnow().timestamp()}_{file.filename}")
-            filepath = os.path.join(current_app.config['UPLOAD_FOLDER'], filename)
-            file.save(filepath)
-            capsule.media_url = f'/uploads/{filename}'
+                if 'file' not in request.files:
+                    return jsonify({'error': 'No image provided'}), 400
+
+                file = request.files['file']
+                if file.filename == '':
+                    return jsonify({'error': 'No file selected'}), 400
+
+                if not allowed_file(file.filename):
+                    return jsonify({'error': 'Invalid file type'}), 400
+
+                # Read image and compress/resize until size <= 1MB
+                try:
+                    img = Image.open(file.stream)
+                except Exception as e:
+                    return jsonify({'error': f'Invalid image file: {str(e)}'}), 400
+
+                # Normalize mode
+                if img.mode in ("RGBA", "P"):
+                    img = img.convert("RGB")
+
+                # Target max bytes
+                MAX_BYTES = 1 * 1024 * 1024  # 1 MB
+
+                # Try saving with decreasing quality and optional resizing
+                quality = 85
+                width, height = img.size
+                buf = io.BytesIO()
+                img.save(buf, format='JPEG', quality=quality)
+                data = buf.getvalue()
+
+                # Reduce quality and size until under the limit
+                while len(data) > MAX_BYTES and quality > 20:
+                    quality -= 5
+                    buf = io.BytesIO()
+                    img.save(buf, format='JPEG', quality=quality)
+                    data = buf.getvalue()
+
+                # If still too large, downscale dimensions iteratively
+                while len(data) > MAX_BYTES and (width > 200 or height > 200):
+                    width = int(width * 0.9)
+                    height = int(height * 0.9)
+                    resized = img.resize((width, height), Image.LANCZOS)
+                    buf = io.BytesIO()
+                    resized.save(buf, format='JPEG', quality=max(quality, 30))
+                    data = buf.getvalue()
+
+                if len(data) > MAX_BYTES:
+                    return jsonify({'error': 'Could not compress image under 1MB'}), 400
+
+                # Store image bytes as base64 inside media_data JSON along with mimetype
+                b64 = base64.b64encode(data).decode('ascii')
+                mime = 'image/jpeg'
+                capsule.media_data = json.dumps({'mimetype': mime, 'b64': b64})
+                capsule.media_url = None
             
         elif media_type == 'text':
             media_data = request.form.get('media_data')
@@ -250,16 +294,14 @@ def delete_capsule(capsule_id):
             print(f"DEBUG: User {user_id} tried to delete capsule owned by {capsule.owner_id}")
             return jsonify({'error': 'Cannot delete capsules created by other users'}), 403
         
-        # Delete image file if exists
-        if capsule.media_url:
-            try:
-                filename = capsule.media_url.split('/')[-1]
-                filepath = os.path.join(current_app.config['UPLOAD_FOLDER'], filename)
-                if os.path.exists(filepath):
-                    os.remove(filepath)
-                    print(f"DEBUG: Deleted image file: {filename}")
-            except Exception as e:
-                print(f"DEBUG: Error deleting image file: {str(e)}")
+        # Clear stored image data in DB (if any)
+        try:
+            capsule.media_data = None
+            capsule.media_url = None
+            db.session.commit()
+            print(f"DEBUG: Cleared image data for capsule {capsule_id}")
+        except Exception:
+            db.session.rollback()
         
         # Delete all visits for this capsule
         Visit.query.filter_by(capsule_id=capsule_id).delete()
@@ -275,4 +317,32 @@ def delete_capsule(capsule_id):
     except Exception as e:
         print(f"DEBUG: Exception in delete_capsule - {e}")
         db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+
+
+@capsule_bp.route('/<int:capsule_id>/image', methods=['GET'])
+@jwt_required()
+def get_capsule_image(capsule_id):
+    """Return the raw image bytes for a capsule stored in the DB."""
+    try:
+        capsule = Capsule.query.get(capsule_id)
+        if not capsule:
+            return jsonify({'error': 'Capsule not found'}), 404
+
+        if capsule.media_type != 'image' or not capsule.media_data:
+            return jsonify({'error': 'No image stored for this capsule'}), 404
+
+        # media_data stored as JSON with mimetype and base64
+        try:
+            payload = json.loads(capsule.media_data)
+            b64 = payload.get('b64')
+            mimetype = payload.get('mimetype', 'image/jpeg')
+            img_bytes = base64.b64decode(b64)
+        except Exception as e:
+            return jsonify({'error': f'Invalid image data: {str(e)}'}), 500
+
+        from flask import Response
+        return Response(img_bytes, mimetype=mimetype)
+    except Exception as e:
         return jsonify({'error': str(e)}), 500
