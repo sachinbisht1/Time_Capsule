@@ -12,8 +12,11 @@ class Capsule(db.Model):
     title = db.Column(db.String(255), nullable=False)
     description = db.Column(db.Text)
     media_type = db.Column(db.String(20))  # 'image' or 'text'
-    media_url = db.Column(db.String(500))  # Path to image or base64 text
-    media_data = db.Column(db.Text)  # For storing text content directly or JSON with image bytes (base64)
+    media_url = db.Column(db.String(500))  # Legacy path to image; new code stores images in media_data
+    # media_data stores either plain text for text-type capsules, OR JSON:
+    #   for single image previously: {'mimetype': ..., 'b64': ...}
+    #   for multiple images now: [ {mimetype, b64}, {mimetype, b64}, ... ]
+    media_data = db.Column(db.Text)
     is_open = db.Column(db.Boolean, default=False)
     open_count = db.Column(db.Integer, default=0)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
@@ -39,9 +42,20 @@ class Capsule(db.Model):
         
         if include_content:
             if self.media_type == 'image':
-                # For images we store the binary (base64) inside media_data as JSON.
-                # Expose a URL that the frontend can call to fetch the raw image bytes.
-                data['media_url'] = f'/api/capsules/{self.id}/image'
+                # media_data may contain a JSON list of images or a single image dict
+                try:
+                    parsed = json.loads(self.media_data) if self.media_data else None
+                except Exception:
+                    parsed = None
+
+                if isinstance(parsed, list):
+                    # Return list of image endpoints
+                    data['media_url'] = [f'/api/capsules/{self.id}/image/{i}' for i in range(len(parsed))]
+                elif isinstance(parsed, dict):
+                    data['media_url'] = [f'/api/capsules/{self.id}/image/0']
+                else:
+                    # Fallback to legacy media_url (filesystem path)
+                    data['media_url'] = [self.media_url] if self.media_url else []
             elif self.media_type == 'text':
                 data['media_data'] = self.media_data
         

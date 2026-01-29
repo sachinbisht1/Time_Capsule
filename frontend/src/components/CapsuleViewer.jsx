@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import api, { capsuleAPI, API_BASE_URL } from '../utils/api';
 import './CapsuleViewer.css';
 
@@ -8,11 +8,7 @@ export default function CapsuleViewer({ capsule, userLocation, onClose, currentU
   const [error, setError] = useState(null);
   const [deleting, setDeleting] = useState(false);
 
-  useEffect(() => {
-    viewCapsule();
-  }, [capsule.id]);
-
-  const viewCapsule = async () => {
+  const viewCapsule = useCallback(async () => {
     try {
       if (!userLocation) {
         throw new Error('Location not available');
@@ -30,7 +26,12 @@ export default function CapsuleViewer({ capsule, userLocation, onClose, currentU
     } finally {
       setLoading(false);
     }
-  };
+  }, [capsule.id, userLocation]);
+
+  useEffect(() => {
+    // call viewCapsule when capsule id or userLocation changes
+    viewCapsule();
+  }, [viewCapsule]);
 
   const handleDeleteCapsule = async () => {
     if (!window.confirm('Are you sure you want to delete this memory? This cannot be undone.')) {
@@ -102,7 +103,17 @@ export default function CapsuleViewer({ capsule, userLocation, onClose, currentU
         )}
 
         {capsuleContent.media_type === 'image' && capsuleContent.media_url && (
-          <ImageFromProtectedUrl url={capsuleContent.media_url} alt={capsuleContent.title} className="capsule-image" />
+          Array.isArray(capsuleContent.media_url) ? (
+            <div className="image-gallery" style={{ display: 'flex', overflowX: 'auto', gap: '8px', padding: '8px 0' }}>
+              {capsuleContent.media_url.map((u, i) => (
+                <div key={i} style={{ flex: '0 0 auto' }}>
+                  <ImageFromProtectedUrl url={u} alt={`${capsuleContent.title} - ${i+1}`} className="capsule-image" />
+                </div>
+              ))}
+            </div>
+          ) : (
+            <ImageFromProtectedUrl url={capsuleContent.media_url} alt={capsuleContent.title} className="capsule-image" />
+          )
         )}
 
         {capsuleContent.media_type === 'text' && capsuleContent.media_data && (
@@ -128,6 +139,7 @@ function ImageFromProtectedUrl({ url, alt, className }) {
 
   useEffect(() => {
     let mounted = true;
+    let objectUrl = null;
     const fetchImage = async () => {
       try {
         // url is like '/api/capsules/1/image' — build absolute URL to backend
@@ -135,7 +147,7 @@ function ImageFromProtectedUrl({ url, alt, className }) {
         const fullUrl = `${base}${url}`;
         const res = await api.get(fullUrl, { responseType: 'blob' });
         const blob = res.data;
-        const objectUrl = URL.createObjectURL(blob);
+        objectUrl = URL.createObjectURL(blob);
         if (mounted) setSrc(objectUrl);
       } catch (e) {
         console.error('Error loading image', e);
@@ -144,7 +156,7 @@ function ImageFromProtectedUrl({ url, alt, className }) {
     fetchImage();
     return () => {
       mounted = false;
-      if (src) URL.revokeObjectURL(src);
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
   }, [url]);
 

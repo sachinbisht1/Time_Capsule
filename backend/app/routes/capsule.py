@@ -48,21 +48,28 @@ def create_capsule():
         )
         
         if media_type == 'image':
-                if 'file' not in request.files:
-                    return jsonify({'error': 'No image provided'}), 400
+            # Support multiple files (max 3). Use request.files.getlist('file')
+            files = request.files.getlist('file')
+            if not files:
+                return jsonify({'error': 'No image provided'}), 400
 
-                file = request.files['file']
+            if len(files) > 3:
+                return jsonify({'error': 'Maximum 3 images allowed'}), 400
+
+            images_payload = []
+
+            for file in files:
                 if file.filename == '':
-                    return jsonify({'error': 'No file selected'}), 400
+                    return jsonify({'error': 'One of the files has no filename'}), 400
 
                 if not allowed_file(file.filename):
-                    return jsonify({'error': 'Invalid file type'}), 400
+                    return jsonify({'error': f'Invalid file type: {file.filename}'}), 400
 
                 # Read image and compress/resize until size <= 1MB
                 try:
                     img = Image.open(file.stream)
                 except Exception as e:
-                    return jsonify({'error': f'Invalid image file: {str(e)}'}), 400
+                    return jsonify({'error': f'Invalid image file {file.filename}: {str(e)}'}), 400
 
                 # Normalize mode
                 if img.mode in ("RGBA", "P"):
@@ -95,13 +102,16 @@ def create_capsule():
                     data = buf.getvalue()
 
                 if len(data) > MAX_BYTES:
-                    return jsonify({'error': 'Could not compress image under 1MB'}), 400
+                    return jsonify({'error': f'Could not compress image {file.filename} under 1MB'}), 400
 
                 # Store image bytes as base64 inside media_data JSON along with mimetype
                 b64 = base64.b64encode(data).decode('ascii')
                 mime = 'image/jpeg'
-                capsule.media_data = json.dumps({'mimetype': mime, 'b64': b64})
-                capsule.media_url = None
+                images_payload.append({'mimetype': mime, 'b64': b64})
+
+            # Store list of images as JSON
+            capsule.media_data = json.dumps(images_payload)
+            capsule.media_url = None
             
         elif media_type == 'text':
             media_data = request.form.get('media_data')
@@ -227,6 +237,8 @@ def view_capsule(capsule_id):
         db.session.rollback()
         return jsonify({'error': str(e)}), 500
 
+
+
 @capsule_bp.route('/my-capsules', methods=['GET'])
 @jwt_required()
 def get_my_capsules():
@@ -322,8 +334,9 @@ def delete_capsule(capsule_id):
 
 
 @capsule_bp.route('/<int:capsule_id>/image', methods=['GET'])
+@capsule_bp.route('/<int:capsule_id>/image/<int:index>', methods=['GET'])
 @jwt_required()
-def get_capsule_image(capsule_id):
+def get_capsule_image(capsule_id, index: int = 0):
     """Return the raw image bytes for a capsule stored in the DB."""
     try:
         capsule = Capsule.query.get(capsule_id)
@@ -336,8 +349,18 @@ def get_capsule_image(capsule_id):
         # media_data stored as JSON with mimetype and base64
         try:
             payload = json.loads(capsule.media_data)
-            b64 = payload.get('b64')
-            mimetype = payload.get('mimetype', 'image/jpeg')
+            # payload may be a list (multiple images) or single dict
+            if isinstance(payload, list):
+                if index < 0 or index >= len(payload):
+                    return jsonify({'error': 'Image index out of range'}), 404
+                item = payload[index]
+            elif isinstance(payload, dict):
+                item = payload
+            else:
+                return jsonify({'error': 'Invalid image data stored'}), 500
+
+            b64 = item.get('b64')
+            mimetype = item.get('mimetype', 'image/jpeg')
             img_bytes = base64.b64decode(b64)
         except Exception as e:
             return jsonify({'error': f'Invalid image data: {str(e)}'}), 500

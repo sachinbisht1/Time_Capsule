@@ -9,7 +9,7 @@ export default function CapsuleForm({ userLocation, onCapsuleCreated }) {
     media_type: 'text',
     media_data: '',
   });
-  const [file, setFile] = useState(null);
+  const [files, setFiles] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
@@ -35,7 +35,12 @@ export default function CapsuleForm({ userLocation, onCapsuleCreated }) {
   };
 
   const handleFileChange = (e) => {
-    setFile(e.target.files[0]);
+    const selected = Array.from(e.target.files || []);
+    if (selected.length > 3) {
+      setError('You can upload up to 3 images only');
+      return;
+    }
+    setFiles(selected);
   };
 
   const handleSubmit = async (e) => {
@@ -44,10 +49,10 @@ export default function CapsuleForm({ userLocation, onCapsuleCreated }) {
     setError(null);
 
     try {
-      console.log('📝 CAPSULE FORM SUBMISSION:');
-      console.log('   userLocation:', userLocation);
-      console.log('   formData:', formData);
-      console.log('   file:', file);
+  console.log('📝 CAPSULE FORM SUBMISSION:');
+  console.log('   userLocation:', userLocation);
+  console.log('   formData:', formData);
+  console.log('   files:', files);
 
       if (!userLocation) {
         console.error('❌ Location not available!');
@@ -64,9 +69,11 @@ export default function CapsuleForm({ userLocation, onCapsuleCreated }) {
       form.append('description', formData.description);
       form.append('media_type', formData.media_type);
 
-      if (formData.media_type === 'image' && file) {
-        form.append('file', file);
-        console.log('📸 Image file appended:', file.name);
+      if (formData.media_type === 'image' && files && files.length > 0) {
+        files.forEach((f) => {
+          form.append('file', f);
+          console.log('📸 Image file appended:', f.name);
+        });
       } else if (formData.media_type === 'text') {
         form.append('media_data', formData.media_data);
         console.log('📝 Text content appended:', formData.media_data.length, 'chars');
@@ -84,7 +91,7 @@ export default function CapsuleForm({ userLocation, onCapsuleCreated }) {
         media_type: 'text',
         media_data: '',
       });
-      setFile(null);
+      setFiles([]);
     } catch (err) {
       const errorMsg = err.response?.data?.error || err.message;
       console.error('❌ Error creating capsule:', errorMsg);
@@ -162,9 +169,16 @@ export default function CapsuleForm({ userLocation, onCapsuleCreated }) {
               id="file"
               accept="image/*"
               onChange={handleFileChange}
+              multiple
               required
             />
-            {file && <p className="file-name">{file.name}</p>}
+            {files && files.length > 0 && (
+              <div className="file-list">
+                {files.map((f, idx) => (
+                  <p key={idx} className="file-name">{f.name}</p>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
