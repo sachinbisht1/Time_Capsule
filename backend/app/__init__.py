@@ -82,6 +82,10 @@ def create_app():
     from app.routes import auth_bp, capsule_bp
     app.register_blueprint(auth_bp)
     app.register_blueprint(capsule_bp)
+
+    @app.route('/')
+    def health_check():
+        return {'status': 'ok', 'service': 'Time Capsule API'}
     
     # Serve uploaded files
     @app.route('/uploads/<filename>')
