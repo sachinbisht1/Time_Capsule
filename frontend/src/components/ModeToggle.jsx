@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import './ModeToggle.css';
 
 export default function ModeToggle({ userMode, onModeChange }) {

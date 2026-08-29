@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
@@ -124,6 +124,24 @@ function MapTypeToggle({ onGoToLocation, userLocation }) {
 function MapContent({ userLocation, userMode, capsules, myCapsules, onCapsuleSelect, onCapsuleDiscovered }) {
   const map = useMap();
 
+  const fetchNearbyCapsules = useCallback(async (lat, lng) => {
+    try {
+      const response = await capsuleAPI.getNearby(lat, lng);
+      onCapsuleDiscovered?.(response.data.capsules || []);
+    } catch (error) {
+      console.error('Error fetching nearby capsules:', error);
+    }
+  }, [onCapsuleDiscovered]);
+
+  const fetchUserCapsules = useCallback(async () => {
+    try {
+      const response = await capsuleAPI.getMyCapsules();
+      onCapsuleDiscovered?.(response.data.capsules || []);
+    } catch (error) {
+      console.error('Error fetching user capsules:', error);
+    }
+  }, [onCapsuleDiscovered]);
+
   // Center map on user location
   useEffect(() => {
     if (userLocation) {
@@ -141,32 +159,14 @@ function MapContent({ userLocation, userMode, capsules, myCapsules, onCapsuleSel
     if (userLocation && userMode === 'visitor') {
       fetchNearbyCapsules(userLocation.lat, userLocation.lng);
     }
-  }, [userLocation, userMode]);
+  }, [userLocation, userMode, fetchNearbyCapsules]);
 
   // Fetch user's capsules (creator mode)
   useEffect(() => {
     if (userMode === 'creator') {
       fetchUserCapsules();
     }
-  }, [userMode]);
-
-  const fetchNearbyCapsules = async (lat, lng) => {
-    try {
-      const response = await capsuleAPI.getNearby(lat, lng);
-      onCapsuleDiscovered?.(response.data.capsules || []);
-    } catch (error) {
-      console.error('Error fetching nearby capsules:', error);
-    }
-  };
-
-  const fetchUserCapsules = async () => {
-    try {
-      const response = await capsuleAPI.getMyCapsules();
-      onCapsuleDiscovered?.(response.data.capsules || []);
-    } catch (error) {
-      console.error('Error fetching user capsules:', error);
-    }
-  };
+  }, [userMode, fetchUserCapsules]);
 
   // Determine which capsules to show based on mode
   const displayCapsules = userMode === 'creator' ? myCapsules : capsules;
@@ -200,7 +200,6 @@ function MapContent({ userLocation, userMode, capsules, myCapsules, onCapsuleSel
         displayCapsules.map((capsule) => {
           // Use different color for own capsules (purple) vs discovered (red)
           const isOwnCapsule = userMode === 'creator';
-          const markerColor = isOwnCapsule ? 'purple' : 'red';
           const markerUrl = isOwnCapsule
             ? 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-violet.png'
             : 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png';
