@@ -14,6 +14,43 @@ function App() {
   const [showForm, setShowForm] = useState(false);
   const [authMode, setAuthMode] = useState('login');
   const [formData, setFormData] = useState({ username: '', email: '', password: '' });
+  const [authMessage, setAuthMessage] = useState('');
+  const [resetToken, setResetToken] = useState('');
+
+  const handleVerifyEmailToken = async (token) => {
+    setAuthMessage('Verifying your email...');
+    try {
+      const response = await authAPI.verifyEmail(token);
+      setAuthMessage(response.data.message || 'Email verified successfully.');
+      setAuthMode('login');
+      if (window.history.replaceState) {
+        window.history.replaceState({}, '', '/');
+      }
+    } catch (error) {
+      const message = error.response?.data?.error || 'Email verification failed';
+      setAuthMessage(message);
+      setAuthMode('login');
+    }
+  };
+
+  useEffect(() => {
+    const path = window.location.pathname;
+    const verifyMatch = path.match(/^\/verify-email\/([^/]+)/);
+    const resetMatch = path.match(/^\/reset-password\/([^/]+)/);
+
+    if (verifyMatch) {
+      const token = decodeURIComponent(verifyMatch[1]);
+      handleVerifyEmailToken(token);
+      return;
+    }
+
+    if (resetMatch) {
+      const token = decodeURIComponent(resetMatch[1]);
+      setResetToken(token);
+      setAuthMode('reset-password');
+      setAuthMessage('Enter your new password below to finish resetting your account.');
+    }
+  }, []);
 
   // Get user location
   useEffect(() => {
@@ -171,6 +208,7 @@ function App() {
 
   const handleLogin = async (e) => {
     e.preventDefault();
+    setAuthMessage('');
     try {
       const response = await authAPI.login(formData.username, formData.password);
       localStorage.setItem('access_token', response.data.access_token);
@@ -180,26 +218,71 @@ function App() {
       setUser(response.data.user);
       setFormData({ username: '', email: '', password: '' });
     } catch (error) {
-      alert(error.response?.data?.error || 'Login failed');
+      const message = error.response?.data?.error || 'Login failed';
+      setAuthMessage(message);
+      alert(message);
     }
   };
 
   const handleRegister = async (e) => {
     e.preventDefault();
+    setAuthMessage('');
     try {
       const response = await authAPI.register(
         formData.username,
         formData.email,
         formData.password
       );
-      localStorage.setItem('access_token', response.data.access_token);
-      if (response.data.refresh_token) {
-        localStorage.setItem('refresh_token', response.data.refresh_token);
-      }
-      setUser(response.data.user);
+      setAuthMessage(response.data.message + ' Use the verification token shown in the response during local testing.');
       setFormData({ username: '', email: '', password: '' });
+      setAuthMode('login');
     } catch (error) {
-      alert(error.response?.data?.error || 'Registration failed');
+      const message = error.response?.data?.error || 'Registration failed';
+      setAuthMessage(message);
+      alert(message);
+    }
+  };
+
+  const handleForgotPassword = async (e) => {
+    e.preventDefault();
+    setAuthMessage('');
+    try {
+      const response = await authAPI.forgotPassword(formData.email || formData.username);
+      const resetTokenValue = response.data.reset_token;
+      setResetToken(resetTokenValue || '');
+      setAuthMessage(response.data.message + (resetTokenValue ? ` Reset token: ${resetTokenValue}` : ''));
+    } catch (error) {
+      const message = error.response?.data?.error || 'Password reset request failed';
+      setAuthMessage(message);
+      alert(message);
+    }
+  };
+
+  const handleResetPassword = async (e) => {
+    e.preventDefault();
+    setAuthMessage('');
+
+    const finalToken = resetToken || formData.email;
+    if (!finalToken) {
+      const missingTokenMessage = 'Reset token is missing. Please use the link from your email.';
+      setAuthMessage(missingTokenMessage);
+      alert(missingTokenMessage);
+      return;
+    }
+
+    try {
+      const response = await authAPI.resetPassword(finalToken, formData.password);
+      setAuthMessage(response.data.message);
+      setResetToken('');
+      setFormData({ username: '', email: '', password: '' });
+      setAuthMode('login');
+      if (window.history.replaceState) {
+        window.history.replaceState({}, '', '/');
+      }
+    } catch (error) {
+      const message = error.response?.data?.error || 'Password reset failed';
+      setAuthMessage(message);
+      alert(message);
     }
   };
 
@@ -225,17 +308,8 @@ function App() {
           <h1>⏰ TimeCapsule</h1>
           <p>Store and discover location-based memories</p>
 
-          <form onSubmit={authMode === 'login' ? handleLogin : handleRegister}>
-            <input
-              type="text"
-              name="username"
-              placeholder="Username"
-              value={formData.username}
-              onChange={handleInputChange}
-              required
-            />
-
-            {authMode === 'register' && (
+          {authMode === 'forgot-password' ? (
+            <form onSubmit={handleForgotPassword}>
               <input
                 type="email"
                 name="email"
@@ -244,29 +318,85 @@ function App() {
                 onChange={handleInputChange}
                 required
               />
-            )}
+              <button type="submit">Send reset link</button>
+            </form>
+          ) : authMode === 'reset-password' ? (
+            <form onSubmit={handleResetPassword}>
+              <input
+                type="text"
+                name="reset-token"
+                placeholder="Reset token"
+                value={resetToken}
+                onChange={(e) => setResetToken(e.target.value)}
+                required
+              />
+              <input
+                type="password"
+                name="password"
+                placeholder="New password"
+                value={formData.password}
+                onChange={handleInputChange}
+                required
+              />
+              <button type="submit">Reset password</button>
+            </form>
+          ) : (
+            <form onSubmit={authMode === 'login' ? handleLogin : handleRegister}>
+              <input
+                type="text"
+                name="username"
+                placeholder="Username"
+                value={formData.username}
+                onChange={handleInputChange}
+                required
+              />
 
-            <input
-              type="password"
-              name="password"
-              placeholder="Password"
-              value={formData.password}
-              onChange={handleInputChange}
-              required
-            />
+              {authMode === 'register' && (
+                <input
+                  type="email"
+                  name="email"
+                  placeholder="Email"
+                  value={formData.email}
+                  onChange={handleInputChange}
+                  required
+                />
+              )}
 
-            <button type="submit">
-              {authMode === 'login' ? 'Login' : 'Register'}
+              <input
+                type="password"
+                name="password"
+                placeholder="Password"
+                value={formData.password}
+                onChange={handleInputChange}
+                required
+              />
+
+              <button type="submit">
+                {authMode === 'login' ? 'Login' : 'Register'}
+              </button>
+            </form>
+          )}
+
+          {authMessage && <p className="auth-message">{authMessage}</p>}
+
+          {authMode === 'login' && (
+            <button className="auth-toggle" onClick={() => setAuthMode('forgot-password')}>
+              Forgot password?
             </button>
-          </form>
+          )}
 
           <button
             className="auth-toggle"
-            onClick={() => setAuthMode(authMode === 'login' ? 'register' : 'login')}
+            onClick={() => {
+              setAuthMessage('');
+              setAuthMode(authMode === 'login' ? 'register' : authMode === 'register' ? 'login' : 'login');
+            }}
           >
             {authMode === 'login'
               ? "Don't have an account? Register"
-              : 'Already have an account? Login'}
+              : authMode === 'register'
+                ? 'Already have an account? Login'
+                : 'Back to login'}
           </button>
         </div>
       </div>

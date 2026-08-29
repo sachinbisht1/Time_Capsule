@@ -9,6 +9,9 @@ class User(db.Model):
     username = db.Column(db.String(80), unique=True, nullable=False)
     email = db.Column(db.String(120), unique=True, nullable=False)
     password_hash = db.Column(db.String(255), nullable=False)
+    is_verified = db.Column(db.Boolean, default=False, nullable=False)
+    email_verification_token = db.Column(db.String(255), nullable=True)
+    password_reset_token = db.Column(db.String(255), nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -27,5 +30,6 @@ class User(db.Model):
             'id': self.id,
             'username': self.username,
             'email': self.email,
+            'is_verified': self.is_verified,
             'created_at': self.created_at.isoformat()
         }

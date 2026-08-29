@@ -1,7 +1,8 @@
-from flask import Flask, request
+from flask import Flask, request, current_app
 from flask_sqlalchemy import SQLAlchemy
 from flask_cors import CORS
 from flask_jwt_extended import JWTManager
+from flask_mail import Mail, Message
 import os
 from dotenv import load_dotenv
 import logging
@@ -13,6 +14,7 @@ load_dotenv()
 
 db = SQLAlchemy()
 jwt = JWTManager()
+mail = Mail()
 
 # Configure logging
 logging.basicConfig(
@@ -30,6 +32,14 @@ def create_app():
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
     app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'dev-secret-key')
     app.config['JWT_SECRET_KEY'] = os.getenv('JWT_SECRET_KEY', 'jwt-secret-key')
+    app.config['MAIL_SERVER'] = os.getenv('MAIL_SERVER', '')
+    app.config['MAIL_PORT'] = int(os.getenv('MAIL_PORT', 587))
+    app.config['MAIL_USERNAME'] = os.getenv('MAIL_USERNAME', '')
+    app.config['MAIL_PASSWORD'] = os.getenv('MAIL_PASSWORD', '')
+    app.config['MAIL_USE_TLS'] = os.getenv('MAIL_USE_TLS', 'true').lower() == 'true'
+    app.config['MAIL_USE_SSL'] = os.getenv('MAIL_USE_SSL', 'false').lower() == 'true'
+    app.config['MAIL_DEFAULT_SENDER'] = os.getenv('MAIL_DEFAULT_SENDER', 'noreply@timecapsule.local')
+    app.config['FRONTEND_URL'] = os.getenv('FRONTEND_URL', 'http://localhost:3000')
     # JWT token expiration strategy
     # Access tokens are short-lived; refresh tokens are long-lived and used to obtain new access tokens.
     app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(hours=int(os.getenv('JWT_ACCESS_EXPIRES_HOURS', 6)))
@@ -44,7 +54,26 @@ def create_app():
     # Initialize extensions
     db.init_app(app)
     jwt.init_app(app)
+    mail.init_app(app)
     CORS(app)
+
+    def send_email(subject, recipients, body, html_body=None):
+        if not app.config.get('MAIL_SERVER') or not app.config.get('MAIL_USERNAME'):
+            logger.warning('📧 Mail server is not configured. Printing email content to console instead.')
+            logger.info('Email subject: %s', subject)
+            logger.info('Recipients: %s', recipients)
+            logger.info('Email body:\n%s', body)
+            return False
+
+        with app.app_context():
+            message = Message(subject=subject, sender=app.config.get('MAIL_DEFAULT_SENDER'), recipients=recipients)
+            message.body = body
+            if html_body:
+                message.html = html_body
+            mail.send(message)
+        return True
+
+    app.send_email = send_email
     
     # JWT error handlers
     @jwt.expired_token_loader
