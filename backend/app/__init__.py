@@ -4,6 +4,7 @@ from flask_cors import CORS
 from flask_jwt_extended import JWTManager
 from flask_mail import Mail, Message
 import os
+import requests
 from dotenv import load_dotenv
 import logging
 from datetime import timedelta, datetime
@@ -39,6 +40,8 @@ def create_app():
     app.config['MAIL_USE_TLS'] = os.getenv('MAIL_USE_TLS', 'true').lower() == 'true'
     app.config['MAIL_USE_SSL'] = os.getenv('MAIL_USE_SSL', 'false').lower() == 'true'
     app.config['MAIL_DEFAULT_SENDER'] = os.getenv('MAIL_DEFAULT_SENDER', 'noreply@timecapsule.local')
+    app.config['RESEND_API_KEY'] = os.getenv('RESEND_API_KEY', '')
+    app.config['RESEND_FROM_EMAIL'] = os.getenv('RESEND_FROM_EMAIL', app.config['MAIL_DEFAULT_SENDER'])
     app.config['FRONTEND_URL'] = os.getenv('FRONTEND_URL', 'http://localhost:3000')
     # JWT token expiration strategy
     # Access tokens are short-lived; refresh tokens are long-lived and used to obtain new access tokens.
@@ -58,20 +61,47 @@ def create_app():
     CORS(app)
 
     def send_email(subject, recipients, body, html_body=None):
-        if not app.config.get('MAIL_SERVER') or not app.config.get('MAIL_USERNAME'):
-            logger.warning('📧 Mail server is not configured. Printing email content to console instead.')
-            logger.info('Email subject: %s', subject)
-            logger.info('Recipients: %s', recipients)
-            logger.info('Email body:\n%s', body)
-            return False
+        if app.config.get('RESEND_API_KEY'):
+            try:
+                response = requests.post(
+                    'https://api.resend.com/emails',
+                    headers={
+                        'Authorization': f"Bearer {app.config['RESEND_API_KEY']}",
+                        'Content-Type': 'application/json',
+                    },
+                    json={
+                        'from': app.config.get('RESEND_FROM_EMAIL', app.config.get('MAIL_DEFAULT_SENDER', 'noreply@timecapsule.local')),
+                        'to': recipients,
+                        'subject': subject,
+                        'html': html_body or body.replace('\n', '<br>'),
+                        'text': body,
+                    },
+                    timeout=20,
+                )
+                response.raise_for_status()
+                logger.info('📧 Email sent via Resend for %s', recipients)
+                return True
+            except Exception as exc:
+                logger.warning('⚠️ Resend email failed: %s', exc)
 
-        with app.app_context():
-            message = Message(subject=subject, sender=app.config.get('MAIL_DEFAULT_SENDER'), recipients=recipients)
-            message.body = body
-            if html_body:
-                message.html = html_body
-            mail.send(message)
-        return True
+        if app.config.get('MAIL_SERVER') and app.config.get('MAIL_USERNAME'):
+            try:
+                with app.app_context():
+                    message = Message(subject=subject, sender=app.config.get('MAIL_DEFAULT_SENDER'), recipients=recipients)
+                    message.body = body
+                    if html_body:
+                        message.html = html_body
+                    mail.send(message)
+                logger.info('📧 Email sent via SMTP for %s', recipients)
+                return True
+            except Exception as exc:
+                logger.warning('⚠️ SMTP email failed: %s', exc)
+
+        logger.warning('📧 No mail service configured. Printing email content to console instead.')
+        logger.info('Email subject: %s', subject)
+        logger.info('Recipients: %s', recipients)
+        logger.info('Email body:\n%s', body)
+        return False
 
     app.send_email = send_email
     
